@@ -1,79 +1,86 @@
 import { useState } from "react";
-import { Form, Button, Container } from "react-bootstrap";
+import { Form, Button, Container, Alert } from "react-bootstrap";
 import { useNavigate, Link } from "react-router-dom";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "../firebase";
+import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
   const navigate = useNavigate();
+  const { setUser } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const API_BASE_URL =
     "https://38598d96-2cae-4ccf-b576-296e506cfadb-00-138sqx8aobb0t.sisko.replit.dev";
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
+    setLoading(true);
 
-    const res = await fetch(`${API_BASE_URL}/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
 
-    const data = await res.json();
+      if (!cred.user.emailVerified) {
+        setError("Please verify your email before logging in.");
+        await auth.signOut();
+        return;
+      }
 
-    if (res.ok) {
-      localStorage.setItem("user", JSON.stringify(data));
+      const token = await cred.user.getIdToken();
+
+      // Sync backend Neon
+      await fetch(`${API_BASE_URL}/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      // Update AuthContext
+      setUser({ firebaseUser: cred.user, token });
+
       navigate("/profile");
-    } else {
-      alert(data.message);
+    } catch (err) {
+      setError(err.message || "Login failed");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <Container className="py-5" style={{ maxWidth: 400 }}>
       <h3 className="mb-4 text-center">Login</h3>
+      {error && <Alert variant="danger">{error}</Alert>}
 
       <Form onSubmit={handleSubmit}>
         <Form.Control
           className="mb-3"
+          type="email"
           placeholder="Email"
+          value={email}
           onChange={(e) => setEmail(e.target.value)}
+          required
         />
-
         <Form.Control
           type="password"
           className="mb-3"
           placeholder="Password"
+          value={password}
           onChange={(e) => setPassword(e.target.value)}
+          required
         />
-
-        <Button type="submit" className="w-100 mb-3">
-          Login
+        <Button type="submit" className="w-100 mb-3" disabled={loading}>
+          {loading ? "Logging in..." : "Login"}
         </Button>
       </Form>
 
-      {/* REGISTER LINK */}
       <p className="text-center small text-muted">
         No account?{" "}
-        <Link
-          to="/register"
-          className="text-primary fw-semibold text-decoration-none"
-        >
+        <Link to="/register" className="text-primary fw-semibold text-decoration-none">
           Register
         </Link>
       </p>
     </Container>
   );
 }
-
-// Note:
-// this page renders a login form for users to authenticate.
-// it uses local state to keep track of email and password inputs.
-// on form submission:
-//   - `e.preventDefault()` stops the page from refreshing.
-//   - sends a POST request to the API `/auth/login` endpoint with email & password.
-//   - if login is successful, the returned user data is stored in localStorage,
-//     and the user is redirected to their profile page.
-//   - if login fails, an alert shows the error message from the server.
-// there's also a link for users without an account to go to the Register page.
-// react-Bootstrap is used for styling the form, inputs, and button.

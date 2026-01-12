@@ -1,18 +1,17 @@
 import { Navigate } from "react-router-dom";
-import { isLoggedIn } from "../utils/auth";
+import { useAuth } from "../context/AuthContext";
 
 export default function ProtectedRoute({ children }) {
-  if (!isLoggedIn()) {
+  const { user, loading } = useAuth();
+
+  // 1️⃣ tunggu until Firebase detect auth
+  if (loading) return <p>Loading...</p>;
+
+  // 2️⃣ pastikan user ada dan email verified
+  if (!user?.firebaseUser?.emailVerified) {
     return <Navigate to="/login" replace />;
   }
 
+  // 3️⃣ kalau semua ok, render page
   return children;
 }
-
-// Note:
-// this component is used to protect private routes in the application.
-// it checks whether the user is authenticated using `isLoggedIn()`. isVerified will be adding soon.
-// if the user is not logged in, they are redirected to the login page.
-// the `replace` prop prevents the user from navigating back
-// to the protected page using the browser's back button.
-// if the user is authenticated, the wrapped child component is rendered.

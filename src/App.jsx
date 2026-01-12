@@ -5,21 +5,38 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import UserProfile from "./pages/UserProfile";
 import FreelancerProfile from "./pages/FreelancerProfile";
+import ChatPage from "./pages/ChatPage";
+import About from "./pages/About";
+import JobsPage from "./pages/JobsPage";
+
 import MainLayout from "./layouts/MainLayout";
 import ProtectedRoute from "./components/ProtectedRoute";
-import About from "./pages/About";
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* PROTECTED PAGES */}
+        {/* ======================
+           PROTECTED ROUTES
+        ====================== */}
+
         <Route
           path="/"
           element={
             <ProtectedRoute>
               <MainLayout>
                 <Home />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/jobs"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <JobsPage />
               </MainLayout>
             </ProtectedRoute>
           }
@@ -48,6 +65,33 @@ export default function App() {
         />
 
         <Route
+          path="/chat"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <ChatPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* optional: future direct chat */}
+        <Route
+          path="/chat/:conversationId"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <ChatPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ======================
+           PUBLIC ROUTES
+        ====================== */}
+
+        <Route
           path="/about"
           element={
             <MainLayout>
@@ -56,7 +100,10 @@ export default function App() {
           }
         />
 
-        {/* AUTH PAGES (NO NAVBAR / FOOTER) */}
+        {/* ======================
+           AUTH ROUTES
+        ====================== */}
+
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
       </Routes>

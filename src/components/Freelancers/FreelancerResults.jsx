@@ -1,27 +1,62 @@
-import FreelancerCard from "./FreelancerCard";
+import { Card, Button, Row, Col } from "react-bootstrap";
+import { useNavigate } from "react-router-dom";
 
-export default function FreelancerResults({ freelancers }) {
-  if (!freelancers || freelancers.length === 0) {
-    return null;
-  }
+export default function FreelancerResults({ freelancers = [] }) {
+  const navigate = useNavigate();
+
+  if (!freelancers.length) return null;
 
   return (
-    <section className="container mt-3 mb-3">
-      <h4 className="mb-4 text-center">Search Results</h4>
+    <section className="freelancer-results py-4">
+      <div className="container">
+        <Row xs={1} sm={2} md={3} lg={4} className="g-3">
+          {freelancers.map((f) => (
+            <Col key={f.firebase_uid}>
+              <Card className="h-100 shadow-sm">
+                {/* IMAGE */}
+                <div
+                  style={{
+                    height: "180px",
+                    overflow: "hidden",
+                    objectFit: "contain",
+                    backgroundColor: "#f1f1f1",
+                  }}
+                >
+                  <Card.Img
+                    variant="top"
+                    src={f.image_url || "https://via.placeholder.com/180"}
+                    style={{
+                      height: "100%",
+                      width: "100%",
+                      objectFit: "contain",
+                    }}
+                  />
+                </div>
 
-      <div className="row g-3 justify-content-center">
-        {freelancers.map((f) => (
-          <div key={f.id} className="col-6 col-md-4 col-lg-3">
-            <FreelancerCard freelancer={f} />
-          </div>
-        ))}
+                {/* BODY */}
+                <Card.Body className="d-flex flex-column">
+                  <Card.Title className="mb-1">{f.name || "Unnamed"}</Card.Title>
+                  <Card.Text className="text-muted small mb-3">
+                    {Array.isArray(f.skills)
+                      ? f.skills.join(", ")
+                      : typeof f.skills === "string"
+                      ? f.skills.split(",").map((s) => s.trim()).join(", ")
+                      : "No skills"}
+                  </Card.Text>
+
+                  <Button
+                    variant="outline-primary"
+                    className="mt-auto"
+                    onClick={() => navigate(`/users/${f.firebase_uid}`)}
+                  >
+                    View Profile
+                  </Button>
+                </Card.Body>
+              </Card>
+            </Col>
+          ))}
+        </Row>
       </div>
     </section>
   );
 }
-
-// Note:
-// this component renders a list of freelancer cards based on search results.
-// if the `freelancers` prop is empty or undefined, nothing will be rendered.
-// each freelancer is mapped into a responsive Bootstrap grid column.
-// the `FreelancerCard` component is reused to keep the UI clean and consistent.

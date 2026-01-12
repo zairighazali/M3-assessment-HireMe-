@@ -1,55 +1,121 @@
-import { Container, Nav, Navbar, Button } from "react-bootstrap";
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { Navbar, Nav, Container, Button, Badge } from "react-bootstrap";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { useState, useEffect } from "react";
+import { ref, onValue } from "firebase/database";
+import { database } from "../firebase";
 
 export default function AppNavbar() {
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const user = JSON.parse(localStorage.getItem("user"));
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  const handleLogout = () => {
-    if (!window.confirm("Logout? why???!")) return;
+  const firebaseUid = user?.firebaseUser?.uid;
 
-    localStorage.removeItem("user");
-    navigate("/login");
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate("/login");
+    } catch (err) {
+      console.error("Logout failed:", err);
+    }
   };
 
+  /* =========================
+     REALTIME UNREAD LISTENER
+  ========================= */
+  useEffect(() => {
+    if (!firebaseUid) {
+      setUnreadCount(0);
+      return;
+    }
+
+    const convsRef = ref(database, "conversations");
+
+    const unsubscribe = onValue(convsRef, (snapshot) => {
+      if (!snapshot.exists()) {
+        setUnreadCount(0);
+        return;
+      }
+
+      let totalUnread = 0;
+
+      snapshot.forEach((convSnap) => {
+        const conv = convSnap.val();
+        if (conv?.unread?.[firebaseUid]) {
+          totalUnread += 1;
+        }
+      });
+
+      setUnreadCount(totalUnread);
+    });
+
+    return () => unsubscribe();
+  }, [firebaseUid]);
+
   return (
-    <Navbar expand="lg" bg="dark" variant="dark" fixed="top">
+    <Navbar bg="dark" variant="dark" expand="lg" sticky="top">
       <Container>
-        {/* Brand / Logo Soon, no idea yet*/}
         <Navbar.Brand as={Link} to="/">
-          HireME!
+          HireMe
         </Navbar.Brand>
 
-        {/* Hamburger yummy */}
         <Navbar.Toggle aria-controls="main-navbar" />
-
-        {/* Menu */}
         <Navbar.Collapse id="main-navbar">
-          <Nav className="ms-auto align-items-lg-center gap-2">
-            <Nav.Link as={NavLink} to="/" end>
+          <Nav className="ms-auto align-items-lg-center">
+            <Nav.Link as={Link} to="/">
               Home
             </Nav.Link>
 
-            {user ? (
+            {/* 🔹 JOB BOARD */}
+            <Nav.Link as={Link} to="/jobs">
+              Jobs
+            </Nav.Link>
+
+            {firebaseUid ? (
               <>
-                <Nav.Link as={NavLink} to="/profile">
+                <Nav.Link as={Link} to="/profile">
                   Profile
+                </Nav.Link>
+
+                {/* 🔹 MESSAGES WITH BADGE */}
+                <Nav.Link
+                  as={Link}
+                  to="/chat"
+                  style={{ position: "relative" }}
+                >
+                  Messages
+                  {unreadCount > 0 && (
+                    <Badge
+                      bg="danger"
+                      pill
+                      className="ms-1"
+                      style={{
+                        position: "absolute",
+                        top: "-4px",
+                        right: "-10px",
+                        fontSize: "0.7rem",
+                      }}
+                    >
+                      {unreadCount}
+                    </Badge>
+                  )}
                 </Nav.Link>
 
                 <Button
                   variant="outline-light"
-                  size="sm"
                   onClick={handleLogout}
+                  className="ms-lg-3 mt-2 mt-lg-0"
                 >
                   Logout
                 </Button>
               </>
             ) : (
               <>
-                <Nav.Link as={NavLink} to="/login">
+                <Nav.Link as={Link} to="/login">
                   Login
                 </Nav.Link>
-                <Nav.Link as={NavLink} to="/register">
+                <Nav.Link as={Link} to="/register">
                   Register
                 </Nav.Link>
               </>

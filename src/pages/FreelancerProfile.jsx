@@ -1,49 +1,54 @@
 import { Container, Row, Col, Card, Button, Spinner } from "react-bootstrap";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 export default function FreelancerProfile() {
-  const { id } = useParams(); // freelancer id dari URL
+  const { id } = useParams(); // id = firebase_uid dari URL
   const navigate = useNavigate();
-
-  const user = JSON.parse(localStorage.getItem("user")); // logged-in user
+  const { user } = useAuth();
+  const token = user?.token;
 
   const [freelancer, setFreelancer] = useState(null);
   const [loading, setLoading] = useState(true);
   const [hiring, setHiring] = useState(false);
 
-  const API =
-    "https://38598d96-2cae-4ccf-b576-296e506cfadb-00-138sqx8aobb0t.sisko.replit.dev";
+  const API = import.meta.env.VITE_API_URL;
 
-  
-  // FETCH FREELANCER PROFILE 
+  // FETCH FREELANCER PROFILE
   useEffect(() => {
+    if (!id) return;
     setLoading(true);
 
-    fetch(`${API}/users/${id}`)
+    fetch(`${API}/users/${id}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
       .then((res) => {
-        if (!res.ok) throw new Error();
+        if (!res.ok) throw new Error("Failed to fetch");
         return res.json();
       })
       .then((data) => {
-        setFreelancer(data);
+        // convert skills array to string if needed
+        setFreelancer({
+          ...data,
+          skills: Array.isArray(data.skills)
+            ? data.skills.join(", ")
+            : data.skills || "",
+        });
       })
-      .catch(() => {
-        setFreelancer(null);
-      })
+      .catch(() => setFreelancer(null))
       .finally(() => setLoading(false));
-  }, [id]);
-
+  }, [id, token]);
 
   // HIRE FREELANCER
   const handleHire = async () => {
-    if (!user?.id) {
+    if (!user?.firebaseUser) {
       alert("Please login first");
       navigate("/login");
       return;
     }
 
-    if (user.id === freelancer.id) {
+    if (user.uid === freelancer.firebase_uid) {
       alert("You cannot hire yourself 😅");
       return;
     }
@@ -55,29 +60,26 @@ export default function FreelancerProfile() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          hirerId: user.id,
-          hireeId: freelancer.id,
-        }),
+        body: JSON.stringify({ hireeId: freelancer.id }),
       });
 
-      if (!res.ok) throw new Error();
-
+      if (!res.ok) throw new Error("Hire failed");
       alert("🎉 Freelancer hired successfully!");
-      navigate("/profile"); // back to UserProfile
+      navigate("/profile"); // kembali ke profile sendiri
     } catch (err) {
+      console.error(err);
       alert("Hire failed");
     } finally {
       setHiring(false);
     }
   };
 
-  // UI state
   if (loading) {
     return (
       <Container className="py-5 text-center">
-        <Spinner />
+        <Spinner animation="border" />
       </Container>
     );
   }
@@ -90,7 +92,6 @@ export default function FreelancerProfile() {
     );
   }
 
-  // MAIN UI
   return (
     <Container className="py-5">
       <Row className="justify-content-center">
@@ -105,7 +106,6 @@ export default function FreelancerProfile() {
                 className="rounded-circle mb-3"
                 style={{ objectFit: "cover" }}
               />
-
               <h3>{freelancer.name}</h3>
               <p className="text-muted">
                 {freelancer.skills || "No skills listed"}
@@ -116,11 +116,7 @@ export default function FreelancerProfile() {
             <p>{freelancer.bio || "No bio provided."}</p>
 
             <div className="d-grid mt-4">
-              <Button
-                size="lg"
-                disabled={hiring}
-                onClick={handleHire}
-              >
+              <Button size="lg" disabled={hiring} onClick={handleHire}>
                 {hiring ? "Hiring..." : "Hire Me"}
               </Button>
             </div>
@@ -130,16 +126,3 @@ export default function FreelancerProfile() {
     </Container>
   );
 }
-
-// Note:
-// this page displays the detailed profile of a freelancer.
-// it fetches freelancer data from the API using the ID from the URL params.
-// while data is loading, a Spinner is shown.
-// if the freelancer is not found, a "Freelancer not found" message appears.
-// logged-in users can hire the freelancer via the "Hire Me" button:
-//   - Users must be logged in, otherwise they're redirected to login.
-//   - Users cannot hire themselves.
-//   - When hiring, the button shows "Hiring..." until the API call finishes.
-// upon successful hire, an alert is shown and the user is navigated back to their profile.
-// if freelancer image or bio is missing, placeholders are used to keep the UI intact.
-// react-Bootstrap components are used for layout, cards, and buttons.

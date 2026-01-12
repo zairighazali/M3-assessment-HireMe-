@@ -9,17 +9,18 @@ import {
 } from "react-bootstrap";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import HiredFreelancerCard from "../components/Freelancers/HiredFreelancerCard";
+import JobCard from "../components/jobs/JobCard"; // <--- baru
+import { uploadFile } from "../utils/storage";
 
 export default function UserProfile() {
   const navigate = useNavigate();
-  const user = JSON.parse(localStorage.getItem("user"));
+  const { user } = useAuth();
+  const firebaseUser = user?.firebaseUser;
+  const token = user?.token;
 
-  const API =
-    "https://38598d96-2cae-4ccf-b576-296e506cfadb-00-138sqx8aobb0t.sisko.replit.dev";
-
-  const CLOUD_NAME = "dyv5qchav";
-  const UPLOAD_PRESET = "profile_upload";
+  const API = "https://38598d96-2cae-4ccf-b576-296e506cfadb-00-138sqx8aobb0t.sisko.replit.dev";
 
   const [showEdit, setShowEdit] = useState(false);
   const [profile, setProfile] = useState({});
@@ -28,59 +29,63 @@ export default function UserProfile() {
   const [imagePreview, setImagePreview] = useState("");
   const [uploading, setUploading] = useState(false);
 
-  // NOT LOGGED IN
-  useEffect(() => {
-    if (!user?.id) navigate("/login");
-  }, []);
-
   // FETCH HIRES + JOBS
-  const fetchHiresAndJobs = () => {
-    if (!user?.id) return;
+  const fetchHiresAndJobs = async () => {
+    if (!firebaseUser?.uid) return;
+    try {
+      const [hiredRes, jobsRes] = await Promise.all([
+        fetch(`${API}/me/hires`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API}/me/jobs`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
 
-    fetch(`${API}/users/${user.id}/hires`)
-      .then(res => res.json())
-      .then(setHired);
+      const hiredData = await hiredRes.json();
+      const jobsData = await jobsRes.json();
 
-    fetch(`${API}/users/${user.id}/jobs`)
-      .then(res => res.json())
-      .then(setJobs);
+      setHired(hiredData || []);
+      setJobs(jobsData || []);
+    } catch (err) {
+      console.error("Failed to fetch hires/jobs:", err);
+    }
   };
 
-  // FETCH PROFILE 
+  // FETCH PROFILE
   useEffect(() => {
-    if (!user?.id) return;
+    if (!firebaseUser?.uid) return;
 
-    fetch(`${API}/users/${user.id}`)
-      .then(res => res.json())
-      .then(data => {
-        setProfile(data);
-        setImagePreview(data.image_url);
-      });
+    const fetchProfile = async () => {
+      try {
+        const res = await fetch(`${API}/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error("Failed to fetch profile");
+        const data = await res.json();
 
-    fetchHiresAndJobs();
-  }, [user?.id]);
+        setProfile({
+          ...data,
+          skills: typeof data.skills === "string" ? data.skills : (Array.isArray(data.skills) ? data.skills.join(", ") : ""),
+        });
+        setImagePreview(data.image_url || "");
+      } catch (err) {
+        console.error("Failed to fetch profile:", err);
+      }
+
+      fetchHiresAndJobs();
+    };
+
+    fetchProfile();
+  }, [firebaseUser?.uid]);
 
   // IMAGE UPLOAD
   const handleImageUpload = async (file) => {
     if (!file) return;
-
     setUploading(true);
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("upload_preset", UPLOAD_PRESET);
-
     try {
-      const res = await fetch(
-        `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
-        { method: "POST", body: formData }
-      );
-
-      const data = await res.json();
-
-      setProfile(prev => ({ ...prev, image_url: data.secure_url }));
-      setImagePreview(data.secure_url);
-    } catch {
+      const url = await uploadFile(file, `profilePhotos/${firebaseUser.uid}`);
+      setProfile(prev => ({ ...prev, image_url: url }));
+      setImagePreview(url);
+    } catch (err) {
+      console.error("Upload failed", err);
       alert("Image upload failed");
     } finally {
       setUploading(false);
@@ -89,22 +94,41 @@ export default function UserProfile() {
 
   // SAVE PROFILE
   const handleSaveProfile = async () => {
-    const res = await fetch(`${API}/users/${user.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(profile),
-    });
+    if (!firebaseUser?.uid) return;
 
-    const updated = await res.json();
+    try {
+      const safeProfile = {
+        name: profile.name || "Unnamed User",
+        skills: profile.skills || "",
+        bio: profile.bio || "",
+        image_url: profile.image_url || null,
+        role: profile.role || "client",
+      };
 
-    localStorage.setItem(
-      "user",
-      JSON.stringify({ ...user, name: updated.name })
-    );
+      const res = await fetch(`${API}/users/me`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(safeProfile),
+      });
 
-    setProfile(updated);
-    setShowEdit(false);
+      if (!res.ok) throw new Error("Failed to save profile");
+
+      const updated = await res.json();
+      setProfile({
+        ...updated,
+        skills: typeof updated.skills === "string" ? updated.skills : (Array.isArray(updated.skills) ? updated.skills.join(", ") : ""),
+      });
+      setShowEdit(false);
+    } catch (err) {
+      console.error("Failed to save profile:", err);
+      alert("Failed to save profile");
+    }
   };
+
+  if (!firebaseUser) return <p>Loading...</p>;
 
   return (
     <Container className="pt-5 mt-4">
@@ -113,27 +137,27 @@ export default function UserProfile() {
         <Col md={6}>
           <Card className="p-4 text-center">
             <img
-              src={profile.image_url || "https://via.placeholder.com/120"}
+              src={imagePreview || "https://via.placeholder.com/120"}
               width={120}
               height={120}
               className="rounded-circle mb-3"
             />
-            <h4>{profile.name}</h4>
-            <p className="text-muted">{profile.skills}</p>
-            <p>{profile.bio}</p>
+            <h4>{profile.name || firebaseUser.displayName || "Your Name"}</h4>
+            <p className="text-muted">{profile.skills || "Your skills"}</p>
+            <p>{profile.bio || "Your bio"}</p>
             <Button onClick={() => setShowEdit(true)}>Edit Profile</Button>
           </Card>
         </Col>
 
-        {/* RIGHT SECTION */}
+        {/* RIGHT */}
         <Col md={6}>
           <h4>People I Hired</h4>
           {hired.length === 0 && <p className="text-muted">None yet</p>}
           {hired.map(h => (
             <HiredFreelancerCard
-              key={h.hire_id}
+              key={h.id}
               hire={h}
-              userId={user.id}
+              userId={firebaseUser.uid}
               refresh={fetchHiresAndJobs}
             />
           ))}
@@ -143,11 +167,11 @@ export default function UserProfile() {
           <h4>Jobs Offered To Me</h4>
           {jobs.length === 0 && <p className="text-muted">No jobs yet</p>}
           {jobs.map(j => (
-            <HiredFreelancerCard
-              key={j.hire_id}
-              hire={j}
-              userId={user.id}
+            <JobCard
+              key={j.id}
+              job={j}
               refresh={fetchHiresAndJobs}
+              userId={firebaseUser.uid}
             />
           ))}
         </Col>
@@ -166,17 +190,16 @@ export default function UserProfile() {
               height={100}
               className="rounded-circle mb-3"
             />
-            <Form.Control
-              type="file"
-              onChange={e => handleImageUpload(e.target.files[0])}
-            />
+            <Form.Control type="file" onChange={e => handleImageUpload(e.target.files[0])} />
             <Form.Control
               className="mt-3"
+              placeholder={profile.name || firebaseUser.displayName || "Your Name"}
               value={profile.name || ""}
               onChange={e => setProfile({ ...profile, name: e.target.value })}
             />
             <Form.Control
               className="mt-2"
+              placeholder={profile.skills || "Your skills"}
               value={profile.skills || ""}
               onChange={e => setProfile({ ...profile, skills: e.target.value })}
             />
@@ -184,29 +207,18 @@ export default function UserProfile() {
               className="mt-2"
               as="textarea"
               rows={4}
+              placeholder={profile.bio || "Your bio"}
               value={profile.bio || ""}
               onChange={e => setProfile({ ...profile, bio: e.target.value })}
             />
           </Form>
         </Modal.Body>
         <Modal.Footer>
-          <Button onClick={handleSaveProfile}>Save</Button>
+          <Button onClick={handleSaveProfile} disabled={uploading}>
+            {uploading ? "Uploading..." : "Save"}
+          </Button>
         </Modal.Footer>
       </Modal>
     </Container>
   );
 }
-
-// Note:
-// LEFT COLUMN: Shows the user's profile with image, name, skills, bio, and an "Edit Profile" button.
-// RIGHT COLUMN: Shows two sections:
-//   1. People the user has hired.
-//   2. Jobs offered to the user.
-// Each hire/job is rendered using the HiredFreelancerCard component, with refresh functionality.
-// Profile data is fetched from the API when the page loads, and hires/jobs are fetched separately.
-// Users can edit their profile via a modal:
-//   - Upload a new profile image (Cloudinary used for storage).
-//   - Update name, skills, and bio.
-//   - Changes are saved via a PUT request to the API, and localStorage is updated accordingly.
-// If the user is not logged in, they are redirected to the login page.
-

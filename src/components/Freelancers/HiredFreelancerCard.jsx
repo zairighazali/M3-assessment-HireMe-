@@ -1,9 +1,16 @@
+// src/components/Hires/HiredFreelancerCard.jsx
 import { Card, Button, Badge, Modal, Form } from "react-bootstrap";
 import { useState, useEffect } from "react";
+import { useAuth } from "../../context/AuthContext";
+import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
-export default function HiredFreelancerCard({ hire, userId, refresh }) {
-  const API =
-    "https://38598d96-2cae-4ccf-b576-296e506cfadb-00-138sqx8aobb0t.sisko.replit.dev";
+export default function HiredFreelancerCard({ hire, refresh }) {
+  const { user } = useAuth();
+  const token = user?.token;
+  const navigate = useNavigate();
+
+  const API = import.meta.env.VITE_API_URL;
 
   const [showEdit, setShowEdit] = useState(false);
   const [form, setForm] = useState({
@@ -12,7 +19,6 @@ export default function HiredFreelancerCard({ hire, userId, refresh }) {
     notes: hire.notes || "",
   });
 
-  // Sync form state bila hire prop berubah
   useEffect(() => {
     setForm({
       project_description: hire.project_description || "",
@@ -23,32 +29,77 @@ export default function HiredFreelancerCard({ hire, userId, refresh }) {
 
   // MARK DONE
   const markDone = async () => {
-    await fetch(`${API}/hires/${hire.hire_id}/done`, { method: "PUT" });
-    refresh();
+    try {
+      await axios.put(
+        `${API}/hires/${hire.id}/status`,
+        { status: "done" },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      refresh();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to mark as done");
+    }
   };
 
   // DELETE / CANCEL
   const deleteHire = async () => {
     if (!window.confirm("Cancel this job?")) return;
-    await fetch(`${API}/hires/${hire.hire_id}`, { method: "DELETE" });
-    refresh();
+    try {
+      await axios.delete(`${API}/hires/${hire.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      refresh();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to cancel hire");
+    }
   };
 
   // UPDATE BOOKING
   const saveEdit = async () => {
-    await fetch(`${API}/hires/${hire.hire_id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
-    setShowEdit(false);
-    refresh();
+    try {
+      await axios.put(
+        `${API}/hires/${hire.id}`,
+        form,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setShowEdit(false);
+      refresh();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to save changes");
+    }
+  };
+
+  // 🔹 CHAT BUTTON FUNCTION (REPAIRED)
+  const startChat = async () => {
+    try {
+      // pastikan user_id integer
+      const otherUserId = parseInt(hire.user_id);
+      if (!otherUserId) throw new Error("Invalid user ID");
+
+      // POST conversation endpoint → selalu return conversation object
+      const res = await axios.post(
+        `${API}/conversations/${otherUserId}`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      const conversationId = parseInt(res.data.id);
+      if (!conversationId) throw new Error("Invalid conversation ID returned");
+
+      // navigate ke ChatPage
+      navigate(`/chat?conversationId=${conversationId}`);
+    } catch (err) {
+      console.error("Failed to start chat:", err);
+      alert("Failed to start chat. Make sure user exists.");
+    }
   };
 
   return (
     <>
       <Card className="p-3 mb-3 position-relative">
-        {/* STATUS */}
         <Badge
           bg={hire.status === "done" ? "secondary" : "success"}
           className="position-absolute top-0 end-0 m-2"
@@ -56,11 +107,9 @@ export default function HiredFreelancerCard({ hire, userId, refresh }) {
           {hire.status}
         </Badge>
 
-        {/* FREELANCER INFO */}
-        <h6 className="mb-1">{hire.user_name}</h6>
-        <small className="text-muted">{hire.user_skills}</small>
+        <h6 className="mb-1">{hire.user_name || "-"}</h6>
+        <small className="text-muted">{hire.user_skills || "-"}</small>
 
-        {/* PROJECT DETAILS */}
         <p className="mt-2 mb-1 small">
           <b>Project:</b> {hire.project_description || "-"}
         </p>
@@ -71,34 +120,20 @@ export default function HiredFreelancerCard({ hire, userId, refresh }) {
           <b>Notes:</b> {hire.notes || "-"}
         </p>
 
-        {/* ACTIONS */}
         {hire.status !== "done" && (
           <div className="mt-2 d-flex gap-2">
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => setShowEdit(true)}
-            >
-              Edit
-            </Button>
-
-            <Button size="sm" variant="success" onClick={markDone}>
-              Done
-            </Button>
-
-            <Button size="sm" variant="danger" onClick={deleteHire}>
-              Cancel
-            </Button>
+            <Button size="sm" variant="secondary" onClick={() => setShowEdit(true)}>Edit</Button>
+            <Button size="sm" variant="success" onClick={markDone}>Done</Button>
+            <Button size="sm" variant="danger" onClick={deleteHire}>Cancel</Button>
+            <Button size="sm" variant="info" onClick={startChat}>Chat</Button>
           </div>
         )}
       </Card>
 
-      {/* EDIT MODAL */}
       <Modal show={showEdit} onHide={() => setShowEdit(false)}>
         <Modal.Header closeButton>
           <Modal.Title>Edit Project Details</Modal.Title>
         </Modal.Header>
-
         <Modal.Body>
           <Form.Group className="mb-2">
             <Form.Label>Project Description</Form.Label>
@@ -106,9 +141,7 @@ export default function HiredFreelancerCard({ hire, userId, refresh }) {
               as="textarea"
               rows={2}
               value={form.project_description}
-              onChange={(e) =>
-                setForm({ ...form, project_description: e.target.value })
-              }
+              onChange={(e) => setForm({ ...form, project_description: e.target.value })}
             />
           </Form.Group>
 
@@ -118,9 +151,7 @@ export default function HiredFreelancerCard({ hire, userId, refresh }) {
               as="textarea"
               rows={2}
               value={form.special_request}
-              onChange={(e) =>
-                setForm({ ...form, special_request: e.target.value })
-              }
+              onChange={(e) => setForm({ ...form, special_request: e.target.value })}
             />
           </Form.Group>
 
@@ -134,21 +165,10 @@ export default function HiredFreelancerCard({ hire, userId, refresh }) {
             />
           </Form.Group>
         </Modal.Body>
-
         <Modal.Footer>
-          <Button variant="primary" onClick={saveEdit}>
-            Save
-          </Button>
+          <Button variant="primary" onClick={saveEdit}>Save</Button>
         </Modal.Footer>
       </Modal>
     </>
   );
 }
-
-// Note:
-// this component displays a hired freelancer card with project details and status.
-// it supports editing, marking a job as done, and cancelling a hire.
-// local state is used to control the edit modal and form inputs.
-// `useEffect` keeps the form data in sync when the `hire` prop changes.
-// all actions (update, done, delete) call the backend API
-// and trigger `refresh()` to reload the latest data after changes.
